@@ -18,32 +18,13 @@ Fine-tuning the library models for language modeling on a text file (GPT, GPT-2,
 GPT and GPT-2 are fine-tuned using a causal language modeling (CLM) loss while BERT and RoBERTa are fine-tuned
 using a masked language modeling (MLM) loss.
 """
-from torch.utils.data.dataset import Dataset
-import json
+
+
 import logging
 import math
 import os
-import random
-import re
-import shutil
-from contextlib import contextmanager
-from pathlib import Path
-from typing import Callable, Dict, List, Optional, Tuple
-
-import numpy as np
-import torch
-from packaging import version
-from torch import nn
-from torch.utils.data.dataloader import DataLoader
-from torch.utils.data.dataset import Dataset
-from torch.utils.data.distributed import DistributedSampler
-from torch.utils.data.sampler import RandomSampler, Sampler, SequentialSampler
-from tqdm.auto import tqdm, trange
 from dataclasses import dataclass, field
 from typing import Optional
-import torch.cuda.nvtx as nvtx
-import torch.nn as nn
-from typing import Callable, Dict, List, Optional, Tuple
 
 from transformers import (
     CONFIG_MAPPING,
@@ -60,9 +41,12 @@ from transformers import (
     TrainingArguments,
     set_seed,
 )
+import torch.cuda.nvtx as nvtx
+import torch.nn as nn
+from typing import Callable, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
-is_torch_tpu_available = False
+
 
 MODEL_CONFIG_CLASSES = list(MODEL_WITH_LM_HEAD_MAPPING.keys())
 MODEL_TYPES = tuple(conf.model_type for conf in MODEL_CONFIG_CLASSES)
@@ -529,7 +513,6 @@ def main():
     # or by passing the --help flag to this script.
     # We now keep distinct sets of args, for a cleaner separation of concerns.
 
-    print("ModelAruments", ModelArguments)
     parser = HfArgumentParser(
         (ModelArguments, DataTrainingArguments, TrainingArguments)
     )
@@ -632,18 +615,14 @@ def main():
 
     # Get datasets
 
-    nvtx.range_push("Get train data")
     train_dataset = (
         get_dataset(data_args, tokenizer=tokenizer) if training_args.do_train else None
     )
-    nvtx.range_pop()
-    nvtx.range_push("Get eval data")
     eval_dataset = (
         get_dataset(data_args, tokenizer=tokenizer, evaluate=True)
         if training_args.do_eval
         else None
     )
-    nvtx.range_pop()
     data_collator = DataCollatorForLanguageModeling(
         tokenizer=tokenizer,
         mlm=data_args.mlm,
@@ -651,7 +630,7 @@ def main():
     )
 
     # Initialize our Trainer
-    trainer = TrainerProfiler(
+    trainer = Trainer(
         model=model,
         args=training_args,
         data_collator=data_collator,
@@ -668,9 +647,7 @@ def main():
             and os.path.isdir(model_args.model_name_or_path)
             else None
         )
-        nvtx.range_push("Train start")
         trainer.train(model_path=model_path)
-        nvtx.range_pop()
         trainer.save_model()
         # For convenience, we also re-save the tokenizer to the same directory,
         # so that you can share your model easily on huggingface.co/models =)
