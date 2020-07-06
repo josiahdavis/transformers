@@ -28,7 +28,7 @@ import re
 import shutil
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import NamedTuple, Callable, Dict, List, Optional, Tuple
 
 import numpy as np
 import torch
@@ -66,6 +66,14 @@ is_torch_tpu_available = False
 
 MODEL_CONFIG_CLASSES = list(MODEL_WITH_LM_HEAD_MAPPING.keys())
 MODEL_TYPES = tuple(conf.model_type for conf in MODEL_CONFIG_CLASSES)
+
+
+class TrainOutput(NamedTuple):
+    global_step: int
+    training_loss: float
+
+
+PREFIX_CHECKPOINT_DIR = "checkpoint"
 
 
 class TrainerProfiler(Trainer):
@@ -674,8 +682,8 @@ def main():
         trainer.save_model()
         # For convenience, we also re-save the tokenizer to the same directory,
         # so that you can share your model easily on huggingface.co/models =)
-        if trainer.is_world_master():
-            tokenizer.save_pretrained(training_args.output_dir)
+        # if trainer.is_world_master():
+        # tokenizer.save_pretrained(training_args.output_dir)
 
     # Evaluation
     results = {}
