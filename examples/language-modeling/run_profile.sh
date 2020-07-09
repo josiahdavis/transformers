@@ -1,0 +1,16 @@
+#!/bin/bash
+set -e
+EXP_NAME=${1:-baseline}-`date "+%Y-%m-%d-%H-%M-%S"`
+PROFILE_NAME=${2:-profile}
+S3_BUCKET=ks-profiling-deep-learning
+/opt/nvidia/nsight-systems/2020.3.1/target-linux-x64/nsys profile \
+    -t cuda,osrt,nvtx,cudnn,cublas \
+    -o ${PROFILE_NAME} \
+    -w true run_lm.sh
+echo "Profiling complete, saving results to S3..."
+aws s3 cp ${PROFILE_NAME}.qdrep s3://${S3_BUCKET}/profiles/${EXP_NAME}/ |& tee meta.txt
+aws s3 presign s3://${S3_BUCKET}/profiles/${EXP_NAME}/${PROFILE_NAME}.qdrep \
+    --expires-in 2678400 |& tee meta.txt -a
+aws s3 cp run_profile.sh s3://${S3_BUCKET}/profiles/${EXP_NAME}/
+aws s3 cp meta.txt s3://${S3_BUCKET}/profiles/${EXP_NAME}/
+echo "Results written to s3://${S3_BUCKET}/profiles/${EXP_NAME}/"

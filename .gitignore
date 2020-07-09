@@ -3,6 +3,7 @@
 # Profiling
 output/
 profile.qdrep
+*meta.txt
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
