@@ -67,6 +67,17 @@ is_torch_tpu_available = False
 MODEL_CONFIG_CLASSES = list(MODEL_WITH_LM_HEAD_MAPPING.keys())
 MODEL_TYPES = tuple(conf.model_type for conf in MODEL_CONFIG_CLASSES)
 
+try:
+    from apex import amp  # noqa: F401
+
+    _has_apex = True
+except ImportError:
+    _has_apex = False
+
+
+def is_apex_available():
+    return _has_apex
+
 
 class TrainOutput(NamedTuple):
     global_step: int
