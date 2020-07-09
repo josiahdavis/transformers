@@ -13,5 +13,5 @@ aws s3 cp ${PROFILE_NAME}.qdrep s3://${S3_BUCKET}/profiles/${EXP_NAME}/ |& tee l
 aws s3 presign s3://${S3_BUCKET}/profiles/${EXP_NAME}/${PROFILE_NAME}.qdrep \
     --expires-in 2678400 |& tee log.txt -a
 aws s3 cp run_profile.sh s3://${S3_BUCKET}/profiles/${EXP_NAME}/
-aws s3 cp meta.txt s3://${S3_BUCKET}/profiles/${EXP_NAME}/
+aws s3 cp log.txt s3://${S3_BUCKET}/profiles/${EXP_NAME}/
 echo "Results written to s3://${S3_BUCKET}/profiles/${EXP_NAME}/"
