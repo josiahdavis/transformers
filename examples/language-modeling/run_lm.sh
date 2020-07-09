@@ -10,7 +10,7 @@ python run_language_modeling.py \
     --model_name_or_path=roberta-base \
     --do_train \
     --num_train_epochs=1 \
-    --max_steps=1000 \
+    --max_steps=100 \
     --per_device_train_batch_size=8 \
     --train_data_file=$TRAIN_FILE \
     --do_eval \
@@ -18,3 +18,5 @@ python run_language_modeling.py \
     --per_device_eval_batch_size=16 \
     --mlm \
     --overwrite_output_dir
+
+    # To run with mixed precision use this flag: --fp16 \
