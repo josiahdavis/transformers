@@ -236,6 +236,7 @@ class TrainerProfiler(Trainer):
             disable=not self.is_local_master(),
         )
         for epoch in train_iterator:
+            nvtx.range_push(f"Before steps")
             if isinstance(train_dataloader, DataLoader) and isinstance(
                 train_dataloader.sampler, DistributedSampler
             ):
@@ -251,14 +252,13 @@ class TrainerProfiler(Trainer):
                     disable=not self.is_local_master(),
                 )
             else:
-                epoch_iterator = tqdm(
-                    train_dataloader,
-                    desc="Iteration",
-                    disable=not self.is_local_master(),
-                )
+                epoch_iterator = iter(train_dataloader)
 
-            for step, inputs in enumerate(epoch_iterator):
-
+            nvtx.range_pop()  # End Before steps
+            for step in range(len(train_dataloader)):
+                nvtx.range_push(f"Data loading")
+                inputs = next(epoch_iterator)
+                nvtx.range_pop()  # End Data loading
                 # Skip past any already trained steps if resuming training
                 if steps_trained_in_current_epoch > 0:
                     steps_trained_in_current_epoch -= 1
@@ -266,13 +266,14 @@ class TrainerProfiler(Trainer):
 
                 nvtx.range_push(f"Step {step}")
                 tr_loss += self._training_step(model, inputs, optimizer)
-                nvtx.range_pop()  # End training ste
 
                 if (step + 1) % self.args.gradient_accumulation_steps == 0 or (
                     # last step in epoch but step is always smaller than gradient_accumulation_steps
-                    len(epoch_iterator) <= self.args.gradient_accumulation_steps
-                    and (step + 1) == len(epoch_iterator)
+                    len(train_dataloader) <= self.args.gradient_accumulation_steps
+                    and (step + 1) == len(train_dataloader)
                 ):
+
+                    nvtx.range_push(f"Clip gradients")
                     if self.args.fp16:
                         torch.nn.utils.clip_grad_norm_(
                             amp.master_params(optimizer), self.args.max_grad_norm
@@ -282,16 +283,24 @@ class TrainerProfiler(Trainer):
                             model.parameters(), self.args.max_grad_norm
                         )
 
+                    nvtx.range_pop()  # End Clip gradients
+                    nvtx.range_push(f"Update parameters")
                     if is_torch_tpu_available:
                         xm.optimizer_step(optimizer)
                     else:
                         optimizer.step()
 
+                    nvtx.range_pop()  # End Update parameters
+                    nvtx.range_push(f"Scheduler")
                     scheduler.step()
+                    nvtx.range_pop()  # End Scheduler
+                    nvtx.range_push(f"Zero gradients")
                     model.zero_grad()
+                    nvtx.range_pop()  # End Zero gradients
                     self.global_step += 1
-                    self.epoch = epoch + (step + 1) / len(epoch_iterator)
+                    self.epoch = epoch + (step + 1) / len(train_dataloader)
 
+                    nvtx.range_push(f"Logging")
                     if (
                         self.args.logging_steps > 0
                         and self.global_step % self.args.logging_steps == 0
@@ -313,6 +322,8 @@ class TrainerProfiler(Trainer):
                         if self.args.evaluate_during_training:
                             self.evaluate()
 
+                    nvtx.range_pop()  # End Logging
+                    nvtx.range_push(f"Saving")
                     if (
                         self.args.save_steps > 0
                         and self.global_step % self.args.save_steps == 0
@@ -354,8 +365,10 @@ class TrainerProfiler(Trainer):
                                 os.path.join(output_dir, "scheduler.pt"),
                             )
 
+                    nvtx.range_pop()  # End Saving
+                nvtx.range_pop()  # End Step {step}
                 if self.args.max_steps > 0 and self.global_step > self.args.max_steps:
-                    epoch_iterator.close()
+                    # epoch_iterator.close()
                     break
             if self.args.max_steps > 0 and self.global_step > self.args.max_steps:
                 train_iterator.close()
@@ -394,13 +407,13 @@ class TrainerProfiler(Trainer):
         if self.args.gradient_accumulation_steps > 1:
             loss = loss / self.args.gradient_accumulation_steps
 
-        nvtx.range_push("Back prop")
+        nvtx.range_push("Calculate gradients")
         if self.args.fp16:
             with amp.scale_loss(loss, optimizer) as scaled_loss:
                 scaled_loss.backward()
         else:
             loss.backward()
-        nvtx.range_pop()  # End backward prop
+        nvtx.range_pop()  # End Update gradients
 
         return loss.item()
 
@@ -445,6 +458,10 @@ class ModelArguments:
     """
     Arguments pertaining to which model/config/tokenizer we are going to fine-tune, or train from scratch.
     """
+
+    use_fast: bool = field(
+        default=False, metadata={"help": "Whether to use fast tokenization."}
+    )
 
     model_name_or_path: Optional[str] = field(
         default=None,
@@ -548,11 +565,11 @@ def main():
     # or by passing the --help flag to this script.
     # We now keep distinct sets of args, for a cleaner separation of concerns.
 
-    print("ModelAruments", ModelArguments)
     parser = HfArgumentParser(
         (ModelArguments, DataTrainingArguments, TrainingArguments)
     )
     model_args, data_args, training_args = parser.parse_args_into_dataclasses()
+    print("ModelAruments", model_args)
 
     if data_args.eval_data_file is None and training_args.do_eval:
         raise ValueError(
@@ -609,11 +626,15 @@ def main():
 
     if model_args.tokenizer_name:
         tokenizer = AutoTokenizer.from_pretrained(
-            model_args.tokenizer_name, cache_dir=model_args.cache_dir
+            model_args.tokenizer_name,
+            cache_dir=model_args.cache_dir,
+            use_fast=model_args.use_fast,
         )
     elif model_args.model_name_or_path:
         tokenizer = AutoTokenizer.from_pretrained(
-            model_args.model_name_or_path, cache_dir=model_args.cache_dir
+            model_args.model_name_or_path,
+            cache_dir=model_args.cache_dir,
+            use_fast=model_args.use_fast,
         )
     else:
         raise ValueError(
